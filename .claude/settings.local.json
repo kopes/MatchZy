@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git -C \"c:\\\\Users\\\\mathe\\\\OneDrive\\\\Área de Trabalho\\\\Servidor TeamVaga\\\\Plugins\\\\Plugins TeamVaga\\\\Matchzy\\\\MatchZy\" remote -v)"
+    ]
+  }
+}

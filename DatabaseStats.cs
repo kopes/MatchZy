@@ -280,7 +280,7 @@ namespace MatchZy
             catch (Exception ex)
             {
                 Log($"[InsertMatchData - FATAL] Error inserting data: {ex.Message}");
-                return liveMatchId;
+                throw;
             }
         }
 

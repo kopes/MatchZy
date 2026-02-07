@@ -767,7 +767,49 @@ namespace MatchZy
             HandleClanTags();
 
             string seriesType = "BO" + matchConfig.NumMaps.ToString();
-            liveMatchId = database.InitMatch(matchzyTeam1.teamName, matchzyTeam2.teamName, "-", isMatchSetup, liveMatchId, matchConfig.CurrentMapNumber, seriesType, matchConfig);
+            try
+            {
+                liveMatchId = database.InitMatch(matchzyTeam1.teamName, matchzyTeam2.teamName, "-", isMatchSetup, liveMatchId, matchConfig.CurrentMapNumber, seriesType, matchConfig);
+            }
+            catch (Exception ex)
+            {
+                Log($"[HandleMatchStart - FATAL] Falha ao inserir dados no banco de dados: {ex.Message}");
+
+                // Salvar erro em arquivo de log persistente
+                try
+                {
+                    string logDirectory = Path.Combine(Server.GameDirectory, "csgo", "MatchZy");
+                    Directory.CreateDirectory(logDirectory);
+                    string logFilePath = Path.Combine(logDirectory, "matchzy_errors.log");
+                    string logEntry = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] [HandleMatchStart - FATAL] Falha ao inserir dados no banco de dados (matchzy_stats_matches/matchzy_stats_maps). Partida cancelada.\n" +
+                                      $"  Team1: {matchzyTeam1.teamName} | Team2: {matchzyTeam2.teamName} | Map: {matchConfig.CurrentMapNumber} | Serie: BO{matchConfig.NumMaps}\n" +
+                                      $"  Excecao: {ex.Message}\n" +
+                                      $"  StackTrace: {ex.StackTrace}\n";
+                    File.AppendAllText(logFilePath, logEntry);
+                }
+                catch (Exception logEx)
+                {
+                    Log($"[HandleMatchStart] Falha ao salvar arquivo de log: {logEx.Message}");
+                }
+
+                Server.PrintToConsole($"{chatPrefix} [ERRO] Falha ao inserir dados no banco de dados (matchzy_stats_matches/matchzy_stats_maps). A partida sera cancelada.");
+                PrintToAllChat($"{ChatColors.LightRed}[ERRO]{ChatColors.Default} Falha ao inserir dados no banco de dados. A partida sera cancelada.");
+
+                for (int i = 5; i >= 1; i--)
+                {
+                    int countdown = i;
+                    AddTimer(5 - countdown, () =>
+                    {
+                        PrintToAllChat($"{ChatColors.LightRed}A partida sera cancelada em {countdown}");
+                    });
+                }
+                AddTimer(5, () =>
+                {
+                    PrintToAllChat($"{ChatColors.LightRed}Partida cancelada por falha no banco de dados.");
+                    ResetMatch();
+                });
+                return;
+            }
             SetupRoundBackupFile();
 
             GetSpawns();
