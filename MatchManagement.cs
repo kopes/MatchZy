@@ -628,19 +628,6 @@ namespace MatchZy
                 await Task.Delay(5000);
                 await SendEventAsync(seriesResultEvent);
 
-                using var client = new HttpClient();
-                client.DefaultRequestHeaders.Add("X-API-Token", "CALLFROMSERVERCS2HANGEIT!");
-                var response = await client.GetAsync("https://teamvaga.com.br/api/update_ranking?token=CALLFROMSERVERCS2HANGEIT!");
-                if(response.IsSuccessStatusCode)
-                {
-                    Log("[EndSeries] Successfully notified ranking system.");
-                    Log(response.ToString());
-                }
-                else
-                {
-                    Log($"[EndSeries] Failed to notify ranking system. Status code: {response.StatusCode}");
-                }
-
             });
 
             if (resetCvarsOnSeriesEnd) ResetChangedConvars();

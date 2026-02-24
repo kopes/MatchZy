@@ -235,11 +235,12 @@ namespace MatchZy
             {
                 string mapName = isMatchSetup ? matchConfig.Maplist[mapNumber] : Server.MapName;
                 string dateTimeExpression = (connection is SqliteConnection) ? "datetime('now')" : "NOW()";
+                string insertIgnore       = (connection is SqliteConnection) ? "INSERT OR IGNORE INTO" : "INSERT IGNORE INTO";
 
                 if (mapNumber == 0) {
                     if (isMatchSetup && liveMatchId != -1) {
-                        connection.Execute(@"
-                            INSERT INTO matchzy_stats_matches (matchid, start_time, team1_name, team2_name, series_type, server_ip)
+                        connection.Execute(insertIgnore + @"
+                            matchzy_stats_matches (matchid, start_time, team1_name, team2_name, series_type, server_ip)
                             VALUES (@liveMatchId, " + dateTimeExpression + ", @team1name, @team2name, @seriesType, @serverIp)",
                             new { liveMatchId, team1name, team2name, seriesType, serverIp });
                     } else {
@@ -251,8 +252,8 @@ namespace MatchZy
                 }
 
                 if (isMatchSetup && liveMatchId != -1) {
-                    connection.Execute(@"
-                        INSERT INTO matchzy_stats_maps (matchid, start_time, mapnumber, mapname)
+                    connection.Execute(insertIgnore + @"
+                        matchzy_stats_maps (matchid, start_time, mapnumber, mapname)
                         VALUES (@liveMatchId, " + dateTimeExpression + ", @mapNumber, @mapName)",
                         new { liveMatchId, mapNumber, mapName });
                     return liveMatchId;

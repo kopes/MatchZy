@@ -479,6 +479,9 @@ namespace MatchZy
                 if (warmupCfgRequired)
                 {
                     StartWarmup();
+                    // Force game restart to ensure the engine transitions from competitive mode to warmup.
+                    // Without this, mp_warmup_start alone may not take effect mid-round.
+                    Server.ExecuteCommand("mp_warmup_start; mp_warmup_pausetimer 1; mp_warmuptime 9999; mp_restartgame 1;");
                 }
                 else
                 {
