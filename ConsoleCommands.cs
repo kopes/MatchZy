@@ -470,6 +470,19 @@ namespace MatchZy
                 {
                     // Server.PrintToChatAll($"{chatPrefix} An admin force-ended the match.");
                     PrintToAllChat(Localizer["matchzy.cc.endmatch"]);
+
+                    // Notify the panel that this match was force-cancelled by an admin.
+                    // Only fires when there is an active series (liveMatchId > 0) so that
+                    // css_endmatch called outside a match does not produce stale webhook calls.
+                    if (isMatchLive && liveMatchId > 0 && !string.IsNullOrEmpty(matchConfig.RemoteLogURL))
+                    {
+                        var cancelEvent = new MatchZySeriesCancelledEvent
+                        {
+                            MatchId = liveMatchId,
+                        };
+                        Task.Run(async () => await SendEventAsync(cancelEvent));
+                    }
+
                     ResetMatch();
                 }
                 else

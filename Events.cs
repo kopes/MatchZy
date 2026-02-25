@@ -138,6 +138,17 @@ public class MatchZySeriesResultEvent : MatchZyMatchEvent
     }
 }
 
+/// <summary>
+/// Emitido quando um admin cancela a partida via css_endmatch durante uma série ao vivo.
+/// O painel usa este evento para fechar a partida com winner = 'cancelled'.
+/// </summary>
+public class MatchZySeriesCancelledEvent : MatchZyMatchEvent
+{
+    public MatchZySeriesCancelledEvent() : base("series_cancelled")
+    {
+    }
+}
+
 public class GoingLiveEvent : MatchZyMapEvent
 {
     [JsonPropertyName("map_name")]
