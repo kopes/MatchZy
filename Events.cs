@@ -114,6 +114,18 @@ public class MatchZySeriesStartedEvent : MatchZyMatchEvent
     [JsonPropertyName("num_maps")]
     public required int NumberOfMaps { get; init; }
 
+    [JsonPropertyName("current_map_number")]
+    public int CurrentMapNumber { get; init; } = 0;
+
+    [JsonPropertyName("team1_series_score")]
+    public int Team1SeriesScore { get; init; } = 0;
+
+    [JsonPropertyName("team2_series_score")]
+    public int Team2SeriesScore { get; init; } = 0;
+
+    [JsonPropertyName("resumed")]
+    public bool Resumed { get; init; } = false;
+
     public MatchZySeriesStartedEvent() : base("series_start")
     {
     }

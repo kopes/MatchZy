@@ -352,7 +352,7 @@ namespace MatchZy
                     }
                 }
                 string currentMapName = Server.MapName;
-                string mapName = matchConfig.Maplist[0].ToString();
+                string mapName = matchConfig.Maplist[matchConfig.CurrentMapNumber].ToString();
 
                 if (IsMapReloadRequiredForGameMode(matchConfig.Wingman) || mapReloadRequired || currentMapName != mapName)
                 {
@@ -386,6 +386,10 @@ namespace MatchZy
                 NumberOfMaps = matchConfig.NumMaps,
                 Team1 = new(matchzyTeam1.id, matchzyTeam1.teamName),
                 Team2 = new(matchzyTeam2.id, matchzyTeam2.teamName),
+                CurrentMapNumber = matchConfig.CurrentMapNumber,
+                Team1SeriesScore = matchzyTeam1.seriesScore,
+                Team2SeriesScore = matchzyTeam2.seriesScore,
+                Resumed = matchConfig.CurrentMapNumber > 0,
             };
 
             Task.Run(async () =>
@@ -458,6 +462,18 @@ namespace MatchZy
 
         public void GetOptionalMatchValues(JObject jsonDataObject)
         {
+            if (jsonDataObject["current_map_number"] != null)
+            {
+                matchConfig.CurrentMapNumber = jsonDataObject["current_map_number"]!.Value<int>();
+            }
+            if (jsonDataObject["team1_series_score"] != null)
+            {
+                matchzyTeam1.seriesScore = jsonDataObject["team1_series_score"]!.Value<int>();
+            }
+            if (jsonDataObject["team2_series_score"] != null)
+            {
+                matchzyTeam2.seriesScore = jsonDataObject["team2_series_score"]!.Value<int>();
+            }
             if (jsonDataObject["map_sides"] != null)
             {
                 matchConfig.MapSides = jsonDataObject["map_sides"]!.ToObject<List<string>>()!;
