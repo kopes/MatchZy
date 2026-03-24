@@ -1908,52 +1908,134 @@ namespace MatchZy
                 return;
             }
 
-            try
+            if (!File.Exists(filePath))
+            {
+                Log($"[UploadFileAsync ERROR] File not found: {filePath}");
+                return;
+            }
+
+            string fileName = Path.GetFileName(filePath);
+            long fileSize = new FileInfo(filePath).Length;
+
+            // ── Tentar fluxo R2 apenas para demos .dem ───────────────────────
+            // Backups de round (.json) são pequenos e vão direto via fallback.
+            bool isDemoFile = Path.GetExtension(filePath).ToLowerInvariant() == ".dem";
+
+            // ── Tentar fluxo R2 (presign → PUT direto → confirm) ─────────────
+            // Evita timeout do nginx: o arquivo vai direto do CS2 para o R2,
+            // sem passar pelo servidor PHP.
+            if (isDemoFile) try
             {
                 using var httpClient = new HttpClient();
-                Log($"[UploadFileAsync] Going to upload the file on {fileUploadURL}. Complete path: {filePath}");
+                httpClient.Timeout = TimeSpan.FromSeconds(30);
 
-                if (!File.Exists(filePath))
+                if (!string.IsNullOrEmpty(headerKey) && !string.IsNullOrEmpty(headerValue))
+                    httpClient.DefaultRequestHeaders.Add(headerKey, headerValue);
+
+                // Passo 1: pedir pre-signed PUT URL ao servidor
+                string presignUrl = fileUploadURL.TrimEnd('/').Replace("/matchzy_files.php", "/r2_presign.php");
+                Log($"[UploadFileAsync] Requesting R2 pre-signed URL from {presignUrl}");
+
+                using var presignRequest = new HttpRequestMessage(HttpMethod.Post, presignUrl);
+                presignRequest.Headers.Add("MatchZy-FileName", fileName);
+                presignRequest.Headers.Add("MatchZy-MatchId", matchId.ToString());
+                presignRequest.Headers.Add("MatchZy-MapNumber", mapNumber.ToString());
+                presignRequest.Headers.Add("MatchZy-RoundNumber", roundNumber.ToString());
+                presignRequest.Content = new StringContent("");
+
+                HttpResponseMessage presignResponse = await httpClient.SendAsync(presignRequest);
+                string presignBody = await presignResponse.Content.ReadAsStringAsync();
+
+                if (presignResponse.IsSuccessStatusCode)
                 {
-                    Log($"[UploadFileAsync ERROR] File not found: {filePath}");
-                    return;
+                    using System.Text.Json.JsonDocument presignJson = System.Text.Json.JsonDocument.Parse(presignBody);
+                    string? uploadUrl = presignJson.RootElement.GetProperty("upload_url").GetString();
+                    string? token = presignJson.RootElement.GetProperty("token").GetString();
+
+                    if (!string.IsNullOrEmpty(uploadUrl) && !string.IsNullOrEmpty(token))
+                    {
+                        // Passo 2: PUT do arquivo direto no R2 (sem passar pelo nginx do pugs.gg)
+                        Log($"[UploadFileAsync] Uploading {fileName} ({fileSize} bytes) directly to R2...");
+
+                        using var r2Client = new HttpClient();
+                        r2Client.Timeout = TimeSpan.FromHours(2);
+
+                        using FileStream r2Stream = File.OpenRead(filePath);
+                        using StreamContent streamContent = new(r2Stream);
+                        streamContent.Headers.Add("Content-Type", "application/octet-stream");
+
+                        using var putRequest = new HttpRequestMessage(HttpMethod.Put, uploadUrl);
+                        putRequest.Content = streamContent;
+
+                        HttpResponseMessage putResponse = await r2Client.SendAsync(putRequest);
+
+                        if (putResponse.IsSuccessStatusCode)
+                        {
+                            // Passo 3: confirmar upload ao servidor para registrar no banco
+                            Log($"[UploadFileAsync] R2 upload successful, confirming to server...");
+
+                            string confirmUrl = fileUploadURL.TrimEnd('/').Replace("/matchzy_files.php", "/r2_confirm.php");
+                            string confirmBody = System.Text.Json.JsonSerializer.Serialize(new { token, file_size = fileSize });
+
+                            using var confirmClient = new HttpClient();
+                            confirmClient.Timeout = TimeSpan.FromSeconds(30);
+                            if (!string.IsNullOrEmpty(headerKey) && !string.IsNullOrEmpty(headerValue))
+                                confirmClient.DefaultRequestHeaders.Add(headerKey, headerValue);
+
+                            HttpResponseMessage confirmResponse = await confirmClient.PostAsync(
+                                confirmUrl,
+                                new StringContent(confirmBody, System.Text.Encoding.UTF8, "application/json")
+                            );
+
+                            if (confirmResponse.IsSuccessStatusCode)
+                                Log($"[UploadFileAsync] R2 upload complete for matchId: {matchId} mapNumber: {mapNumber} fileName: {fileName}");
+                            else
+                                Log($"[UploadFileAsync ERROR] Confirm failed: {await confirmResponse.Content.ReadAsStringAsync()}");
+                        }
+                        else
+                        {
+                            Log($"[UploadFileAsync ERROR] R2 PUT failed: {putResponse.StatusCode}");
+                        }
+                        return; // fluxo R2 concluído (com ou sem erro)
+                    }
                 }
 
+                Log($"[UploadFileAsync] R2 presign not available ({presignResponse.StatusCode}), falling back to direct upload...");
+            }
+            catch (Exception e)
+            {
+                Log($"[UploadFileAsync] R2 flow failed ({e.Message}), falling back to direct upload...");
+            } // end if (isDemoFile)
+
+            // ── Fallback: upload direto para matchzy_files.php ────────────────
+            try
+            {
+                Log($"[UploadFileAsync] Going to upload the file on {fileUploadURL}. Complete path: {filePath}");
+
+                using var httpClient = new HttpClient();
+                httpClient.Timeout = TimeSpan.FromHours(2);
+
+                if (!string.IsNullOrEmpty(headerKey) && !string.IsNullOrEmpty(headerValue))
+                    httpClient.DefaultRequestHeaders.Add(headerKey, headerValue);
+
                 using FileStream fileStream = File.OpenRead(filePath);
-
-                byte[] fileContent = new byte[fileStream.Length];
-                await fileStream.ReadAsync(fileContent, 0, (int)fileStream.Length);
-
-                using ByteArrayContent content = new(fileContent);
+                using StreamContent content = new(fileStream);
                 content.Headers.Add("Content-Type", "application/octet-stream");
-
-                content.Headers.Add("MatchZy-FileName", Path.GetFileName(filePath));
+                content.Headers.Add("MatchZy-FileName", fileName);
                 content.Headers.Add("MatchZy-MatchId", matchId.ToString());
                 content.Headers.Add("MatchZy-MapNumber", mapNumber.ToString());
                 content.Headers.Add("MatchZy-RoundNumber", roundNumber.ToString());
-
-                // For Get5 Panel
-                content.Headers.Add("Get5-FileName", Path.GetFileName(filePath));
+                content.Headers.Add("Get5-FileName", fileName);
                 content.Headers.Add("Get5-MatchId", matchId.ToString());
                 content.Headers.Add("Get5-MapNumber", mapNumber.ToString());
                 content.Headers.Add("Get5-RoundNumber", roundNumber.ToString());
 
-
-                if (!string.IsNullOrEmpty(headerKey) && !string.IsNullOrEmpty(headerValue))
-                {
-                    httpClient.DefaultRequestHeaders.Add(headerKey, headerValue);
-                }
-
                 HttpResponseMessage response = await httpClient.PostAsync(fileUploadURL, content);
 
                 if (response.IsSuccessStatusCode)
-                {
-                    Log($"[UploadFileAsync] File upload successful for matchId: {matchId} mapNumber: {mapNumber} fileName: {Path.GetFileName(filePath)}.");
-                }
+                    Log($"[UploadFileAsync] File upload successful for matchId: {matchId} mapNumber: {mapNumber} fileName: {fileName}.");
                 else
-                {
                     Log($"[UploadFileAsync ERROR] Failed to upload file. Status code: {response.StatusCode} Response: {await response.Content.ReadAsStringAsync()}");
-                }
             }
             catch (Exception e)
             {
